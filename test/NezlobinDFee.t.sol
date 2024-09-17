@@ -6,15 +6,15 @@ import {Test} from "forge-std/Test.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
-import {MockERC20} from "@uniswap/v4-core/lib/forge-gas-snapshot/lib/forge-std/src/mocks/MockERC20.sol";
+import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
-import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {console} from "forge-std/console.sol";
+import {LiquidityAmounts} from "lib/v4-periphery/lib/v4-core/test/utils/LiquidityAmounts.sol";
 
 import {NezlobinDirectionalFee} from "../src/NezlobinDirectionalFee.sol";
 
@@ -25,17 +25,26 @@ contract NezlobinDFeeTest is Test, Deployers {
     NezlobinDirectionalFee feeHook;
     Currency token0;
     Currency token1;
+    MockERC20 token;
     uint24 fee = 3000;
     int24 tickLower = -60;
     int24 tickUpper = 60;
+    uint8 decimals = 6;
     address streamUpkeep = 0x5083b3A4739cE599809988C911aF618eCd08bfFA;
-    int256 liquidityDelta = 100 ether;
+    uint256 token0ToSpend = 1000 ether;
     int256 amountSpcfd = 2.5 ether;
     address someAddress = makeAddr("someAddress");
 
     function setUp() public {
+        token0 = Currency.wrap(address(0));
+
         deployFreshManagerAndRouters();
-        (token0, token1) = deployMintAndApprove2Currencies();
+        // (token0, token1) = deployMintAndApprove2Currencies();
+
+        token = new MockERC20("Test USDC", "USDC", decimals);
+        token1 = Currency.wrap(address(token));
+        token.mint(address(this), 1000 ether);
+
         uint160 flags = uint160(
             Hooks.BEFORE_INITIALIZE_FLAG |
                 Hooks.BEFORE_SWAP_FLAG |
@@ -50,10 +59,6 @@ contract NezlobinDFeeTest is Test, Deployers {
         );
         feeHook = NezlobinDirectionalFee(nezlobinHookAddress);
 
-        MockERC20(Currency.unwrap(token0)).approve(
-            address(feeHook),
-            type(uint256).max
-        );
         MockERC20(Currency.unwrap(token1)).approve(
             address(feeHook),
             type(uint256).max
@@ -68,12 +73,21 @@ contract NezlobinDFeeTest is Test, Deployers {
             ZERO_BYTES
         );
 
-        modifyLiquidityRouter.modifyLiquidity(
+        uint160 sqrtPriceAtLowerTick = TickMath.getSqrtPriceAtTick(tickLower);
+        uint160 sqrtPriceAtUpperTick = TickMath.getSqrtPriceAtTick(tickUpper);
+
+        uint128 liquidityDelta = LiquidityAmounts.getLiquidityForAmount0(
+            sqrtPriceAtLowerTick,
+            sqrtPriceAtUpperTick,
+            token0ToSpend
+        );
+        vm.deal(address(this), 2000 ether);
+        modifyLiquidityRouter.modifyLiquidity{value: token0ToSpend}(
             key,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: tickLower,
                 tickUpper: tickUpper,
-                liquidityDelta: liquidityDelta,
+                liquidityDelta: int128(liquidityDelta),
                 salt: bytes32(0)
             }),
             ZERO_BYTES
@@ -89,7 +103,7 @@ contract NezlobinDFeeTest is Test, Deployers {
         uint24 lpFeeBeforeSwap = feeHook.getLpFee();
         console.log("lpFeeBefore:", lpFeeBeforeSwap);
 
-        swapRouter.swap(
+        swapRouter.swap{value: 2.5 ether}(
             key,
             IPoolManager.SwapParams({
                 zeroForOne: true,
@@ -103,7 +117,7 @@ contract NezlobinDFeeTest is Test, Deployers {
         uint24 lpFeeAfterSwap1 = feeHook.getLpFee();
         console.log("lpFeeAfterSwap1:", lpFeeAfterSwap1);
 
-        swapRouter.swap(
+        swapRouter.swap{value: 2.5 ether}(
             key,
             IPoolManager.SwapParams({
                 zeroForOne: true,
