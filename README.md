@@ -60,3 +60,11 @@ The contract includes the following owner-only functions:
 - `updateSellThreshold`: Updates the sell threshold
 
 Only the address set as `i_owner` during contract deployment can call these functions.
+
+## Simulation Script
+
+To determine the optimal alpha value and simulate different scenarios, I created a Python script. This script helped me analyze various market conditions and their impact on the fee mechanism. You can find the simulation script here:
+
+[AMM Simulations Repository](https://github.com/Jaseempk/amm_simulations.git)
+
+It's not fine tuned or consistent atm, gotta work on this
