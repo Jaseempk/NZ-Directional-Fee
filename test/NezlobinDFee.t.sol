@@ -31,7 +31,7 @@ contract NezlobinDFeeTest is Test, Deployers {
     int24 tickUpper = 60;
     uint8 decimals = 6;
     address streamUpkeep = 0x5083b3A4739cE599809988C911aF618eCd08bfFA;
-    uint256 token0ToSpend = 1000 ether;
+    uint256 token0ToSpend = 100 ether;
     int256 amountSpcfd = 2.5 ether;
     address someAddress = makeAddr("someAddress");
 
@@ -43,10 +43,12 @@ contract NezlobinDFeeTest is Test, Deployers {
 
         token = new MockERC20("Test USDC", "USDC", decimals);
         token1 = Currency.wrap(address(token));
-        token.mint(address(this), 1000 ether);
+
+        MockERC20(Currency.unwrap(token1)).mint(address(this), 100 ether);
 
         uint160 flags = uint160(
             Hooks.BEFORE_INITIALIZE_FLAG |
+                Hooks.AFTER_ADD_LIQUIDITY_FLAG |
                 Hooks.BEFORE_SWAP_FLAG |
                 Hooks.AFTER_SWAP_FLAG
         );
@@ -63,6 +65,10 @@ contract NezlobinDFeeTest is Test, Deployers {
             address(feeHook),
             type(uint256).max
         );
+        MockERC20(Currency.unwrap(token1)).approve(
+            address(modifyLiquidityRouter),
+            type(uint256).max
+        );
 
         (key, ) = initPool(
             token0,
@@ -75,13 +81,30 @@ contract NezlobinDFeeTest is Test, Deployers {
 
         uint160 sqrtPriceAtLowerTick = TickMath.getSqrtPriceAtTick(tickLower);
         uint160 sqrtPriceAtUpperTick = TickMath.getSqrtPriceAtTick(tickUpper);
+        console.log("lTickPrice:", sqrtPriceAtLowerTick);
+        console.log("uTickPrice:", sqrtPriceAtLowerTick);
 
         uint128 liquidityDelta = LiquidityAmounts.getLiquidityForAmount0(
             sqrtPriceAtLowerTick,
             sqrtPriceAtUpperTick,
             token0ToSpend
         );
-        vm.deal(address(this), 2000 ether);
+
+        uint256 token1Mount = LiquidityAmounts.getAmount1ForLiquidity(
+            sqrtPriceAtLowerTick,
+            sqrtPriceAtUpperTick,
+            liquidityDelta
+        );
+
+        console.log("token1Amount:", token1Mount);
+
+        console.log("liquidityAdded:", liquidityDelta);
+
+        vm.deal(address(this), 200 ether);
+
+        console.log("token1Balance:", token.balanceOf(address(this)));
+        console.log("native-Balance:", address(this).balance);
+        console.log("token0ToSpend:", token0ToSpend);
         modifyLiquidityRouter.modifyLiquidity{value: token0ToSpend}(
             key,
             IPoolManager.ModifyLiquidityParams({
@@ -113,11 +136,15 @@ contract NezlobinDFeeTest is Test, Deployers {
             test,
             ZERO_BYTES
         );
+        console.log("token0Balance:", address(this).balance);
+        console.log("token1Balance:", token.balanceOf(address(this)));
+        console.log("---------------------------------------");
+
         console.log("sqrtLmt:", TickMath.MIN_SQRT_PRICE);
         uint24 lpFeeAfterSwap1 = feeHook.getLpFee();
         console.log("lpFeeAfterSwap1:", lpFeeAfterSwap1);
 
-        swapRouter.swap{value: 2.5 ether}(
+        swapRouter.swap{value: uint256(amountSpcfd)}(
             key,
             IPoolManager.SwapParams({
                 zeroForOne: true,
@@ -127,10 +154,80 @@ contract NezlobinDFeeTest is Test, Deployers {
             test,
             ZERO_BYTES
         );
-        console.log("sqrtLmt2:", TickMath.MIN_SQRT_PRICE + 2);
         uint24 lpFeeAfterSwap2 = feeHook.getLpFee();
         console.log("lpFeeAfterSwap2:", lpFeeAfterSwap2);
+        console.log("token0Balance:", token.balanceOf(address(this)));
+        console.log("token1Balance:", token.balanceOf(address(this)));
+
+        console.log("---------------------------------------");
+
+        uint256 currentBlock = block.number;
+        vm.roll(currentBlock + 1);
+        uint24 lpFeeAfterSwap00 = feeHook.getLpFee();
+        console.log("lpFeeAfterSwap3:", lpFeeAfterSwap00);
+        swapRouter.swap{value: uint256(amountSpcfd)}(
+            key,
+            IPoolManager.SwapParams({
+                zeroForOne: true,
+                amountSpecified: -amountSpcfd,
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
+            test,
+            ZERO_BYTES
+        );
+        console.log("token0Balance:", address(this).balance);
+        console.log("token1Balance:", token.balanceOf(address(this)));
+        console.log("---------------------------------------");
+        swapRouter.swap{value: uint256(amountSpcfd)}(
+            key,
+            IPoolManager.SwapParams({
+                zeroForOne: true,
+                amountSpecified: -amountSpcfd,
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
+            test,
+            ZERO_BYTES
+        );
+        console.log("token0Balance:", address(this).balance);
+        console.log("token1Balance:", token.balanceOf(address(this)));
+        console.log("---------------------------------------");
+        swapRouter.swap{value: uint256(amountSpcfd)}(
+            key,
+            IPoolManager.SwapParams({
+                zeroForOne: true,
+                amountSpecified: -amountSpcfd,
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
+            test,
+            ZERO_BYTES
+        );
+        console.log("token0Balance:", address(this).balance);
+        console.log("token1Balance:", token.balanceOf(address(this)));
+        console.log("---------------------------------------");
+        uint256 newBlock = block.number;
+        vm.roll(newBlock + 1);
+        uint24 lpFeeAfterSwap3 = feeHook.getLpFee();
+
+        console.log("lpFeeAfterSwap3:", lpFeeAfterSwap3);
+
+        swapRouter.swap{value: uint256(amountSpcfd)}(
+            key,
+            IPoolManager.SwapParams({
+                zeroForOne: true,
+                amountSpecified: -amountSpcfd,
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
+            test,
+            ZERO_BYTES
+        );
+        console.log("token0Balance:", address(this).balance);
+        console.log("token1Balance:", token.balanceOf(address(this)));
+        console.log("---------------------------------------");
+        uint24 lpFeeAfterSwap4 = feeHook.getLpFee();
+        console.log("lpFeeAfterSwap4:", lpFeeAfterSwap4);
     }
+
+    function test_newBlockSwap() public {}
 
     function test_accessControlFailures() public {
         uint256 newAlpha = 3e16;

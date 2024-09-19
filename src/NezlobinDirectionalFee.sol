@@ -39,15 +39,16 @@ contract NezlobinDirectionalFee is BaseHook {
     uint256 public cDelta;
     uint256 public ethPriceT;
     uint256 public ethPriceT1;
-    int256 public priceImpactPercent;
+    int256 priceImpactPrecisionAdjusted;
 
     // Configurable parameters
     uint256 public alpha = 2e16; // Represents 0.2
-    int256 public buyThreshold = 2;
-    int256 public sellThreshold = -2;
+    int256 public buyThreshold = 2e4;
+    int256 public sellThreshold = -2e4;
 
     // Constants
     uint256 public constant ALPHA_PRECISION = 1e18;
+    uint256 public constant PRICE_IMPACT_PRECISION = 1e6;
 
     // Immutable variables
     address public immutable i_owner;
@@ -80,7 +81,7 @@ contract NezlobinDirectionalFee is BaseHook {
                 beforeInitialize: true,
                 afterInitialize: false,
                 beforeAddLiquidity: false,
-                afterAddLiquidity: false,
+                afterAddLiquidity: true,
                 beforeRemoveLiquidity: false,
                 afterRemoveLiquidity: false,
                 beforeSwap: true,
@@ -103,11 +104,23 @@ contract NezlobinDirectionalFee is BaseHook {
         uint160,
         bytes calldata
     ) external override returns (bytes4) {
-        poolIdToBlock[key.toId()] = block.timestamp;
-        (uint256 currentSqrtPrice, , , ) = poolManager.getSlot0(key.toId());
-        ethPriceT = currentSqrtPrice;
+        poolIdToBlock[key.toId()] = block.number;
         if (!key.fee.isDynamicFee()) revert NZD__MustBeDynamicFee();
         return this.beforeInitialize.selector;
+    }
+
+    function afterAddLiquidity(
+        address,
+        PoolKey calldata key,
+        IPoolManager.ModifyLiquidityParams calldata,
+        BalanceDelta delta,
+        BalanceDelta,
+        bytes calldata
+    ) external override returns (bytes4, BalanceDelta) {
+        (uint256 currentSqrtPrice, , , ) = poolManager.getSlot0(key.toId());
+        ethPriceT = currentSqrtPrice;
+
+        return (this.afterAddLiquidity.selector, delta);
     }
 
     /// @notice Executes before a swap operation
@@ -121,26 +134,37 @@ contract NezlobinDirectionalFee is BaseHook {
         bytes calldata
     ) external override returns (bytes4, BeforeSwapDelta, uint24) {
         poolId = key.toId();
-        if (poolIdToBlock[key.toId()] < block.timestamp) {
+        if (poolIdToBlock[key.toId()] < block.number) {
+            poolIdToBlock[key.toId()] = block.number;
+
             // Update price and calculate price impact
-            (uint256 sqrtPriceAtT1, int24 currentTick, , ) = poolManager
-                .getSlot0(key.toId());
+            (uint256 sqrtPriceAtT1, , , ) = poolManager.getSlot0(key.toId());
             ethPriceT1 = sqrtPriceAtT1;
-            priceImpactPercent = int256((ethPriceT1 - ethPriceT) / ethPriceT); // Calculate 𝚫
+
+            uint256 priceImpactPercent = (ethPriceT1 * PRICE_IMPACT_PRECISION) /
+                ethPriceT;
+            priceImpactPrecisionAdjusted = int256(
+                PRICE_IMPACT_PRECISION - priceImpactPercent
+            ); // Calculate 𝚫
 
             // Calculate cDelta
-            cDelta =
-                calculateC(key, currentTick, uint256(priceImpactPercent)) *
-                uint256(priceImpactPercent);
+            cDelta = calculateCDelta(
+                key,
+                uint256(-priceImpactPrecisionAdjusted)
+            );
 
             ethPriceT = ethPriceT1;
         }
 
         // Adjust fees based on price impact
-        if (priceImpactPercent > 0 && priceImpactPercent >= buyThreshold) {
+        if (
+            priceImpactPrecisionAdjusted > 0 &&
+            priceImpactPrecisionAdjusted >= buyThreshold
+        ) {
             adjustFees(key, params, true);
         } else if (
-            priceImpactPercent < 0 && priceImpactPercent >= sellThreshold
+            priceImpactPrecisionAdjusted < 0 &&
+            priceImpactPrecisionAdjusted <= sellThreshold
         ) {
             adjustFees(key, params, false);
         } else {
@@ -185,19 +209,28 @@ contract NezlobinDirectionalFee is BaseHook {
     /// @notice Calculates the 'c' factor for fee adjustment
     /// @dev Uses fixed-point arithmetic to handle decimal values
     /// @param key The PoolKey for the calculation
-    /// @param _currentTick The current tick of the pool
     /// @param priceImpact The calculated price impact
-    /// @return c The calculated 'c' factor
-    function calculateC(
+    /// @return cdelta The calculated 'cDelta' factor
+    function calculateCDelta(
         PoolKey calldata key,
-        int24 _currentTick,
         uint256 priceImpact
-    ) internal view returns (uint256 c) {
-        (uint128 liquidityGross, ) = poolManager.getTickLiquidity(
-            key.toId(),
-            _currentTick
-        );
-        c = (alpha * priceImpact) / (liquidityGross * ALPHA_PRECISION);
+    ) internal view returns (uint256 cdelta) {
+        uint128 liquidity = poolManager.getLiquidity(key.toId());
+        (, , , uint24 currentLpFee) = poolManager.getSlot0(key.toId());
+
+        uint256 numerator = alpha * priceImpact;
+
+        uint256 denominator = liquidity * ALPHA_PRECISION;
+
+        uint256 c = numerator / denominator;
+
+        uint256 cdeltaInit = c * priceImpact;
+
+        while (currentLpFee < cdeltaInit) {
+            c--;
+        }
+
+        cdelta = c * priceImpact;
     }
 
     /// @notice Retrieves the current LP fee for the pool
@@ -211,21 +244,16 @@ contract NezlobinDirectionalFee is BaseHook {
     /// @dev This is an internal function called by beforeSwap
     /// @param key The PoolKey for the adjustment
     /// @param params The swap parameters
-    /// @param isToken0Pumping Whether the adjustment is for a buy or sell
+    /// @param isToken0PricePumping Whether the adjustment is for a buy or sell
     function adjustFees(
         PoolKey calldata key,
         IPoolManager.SwapParams calldata params,
-        bool isToken0Pumping
+        bool isToken0PricePumping
     ) internal {
         (, , , uint24 currentLpFee) = poolManager.getSlot0(key.toId());
 
-        if (int24(currentLpFee) - int256(cDelta) < 0) {
-            poolManager.updateDynamicLPFee(key, currentLpFee);
-            return;
-        }
-
         uint24 newFee;
-        if (isToken0Pumping) {
+        if (isToken0PricePumping) {
             newFee = params.zeroForOne
                 ? currentLpFee - uint24(cDelta)
                 : currentLpFee + uint24(cDelta);
