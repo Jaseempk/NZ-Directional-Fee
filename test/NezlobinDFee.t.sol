@@ -48,6 +48,7 @@ contract NezlobinDFeeTest is Test, Deployers {
 
         uint160 flags = uint160(
             Hooks.BEFORE_INITIALIZE_FLAG |
+                Hooks.AFTER_INITIALIZE_FLAG |
                 Hooks.AFTER_ADD_LIQUIDITY_FLAG |
                 Hooks.BEFORE_SWAP_FLAG |
                 Hooks.AFTER_SWAP_FLAG
@@ -81,8 +82,6 @@ contract NezlobinDFeeTest is Test, Deployers {
 
         uint160 sqrtPriceAtLowerTick = TickMath.getSqrtPriceAtTick(tickLower);
         uint160 sqrtPriceAtUpperTick = TickMath.getSqrtPriceAtTick(tickUpper);
-        console.log("lTickPrice:", sqrtPriceAtLowerTick);
-        console.log("uTickPrice:", sqrtPriceAtLowerTick);
 
         uint128 liquidityDelta = LiquidityAmounts.getLiquidityForAmount0(
             sqrtPriceAtLowerTick,
@@ -90,21 +89,8 @@ contract NezlobinDFeeTest is Test, Deployers {
             token0ToSpend
         );
 
-        uint256 token1Mount = LiquidityAmounts.getAmount1ForLiquidity(
-            sqrtPriceAtLowerTick,
-            sqrtPriceAtUpperTick,
-            liquidityDelta
-        );
-
-        console.log("token1Amount:", token1Mount);
-
-        console.log("liquidityAdded:", liquidityDelta);
-
         vm.deal(address(this), 200 ether);
 
-        console.log("token1Balance:", token.balanceOf(address(this)));
-        console.log("native-Balance:", address(this).balance);
-        console.log("token0ToSpend:", token0ToSpend);
         modifyLiquidityRouter.modifyLiquidity{value: token0ToSpend}(
             key,
             IPoolManager.ModifyLiquidityParams({
@@ -123,9 +109,6 @@ contract NezlobinDFeeTest is Test, Deployers {
             settleUsingBurn: false
         });
 
-        uint24 lpFeeBeforeSwap = feeHook.getLpFee();
-        console.log("lpFeeBefore:", lpFeeBeforeSwap);
-
         swapRouter.swap{value: 2.5 ether}(
             key,
             IPoolManager.SwapParams({
@@ -136,35 +119,25 @@ contract NezlobinDFeeTest is Test, Deployers {
             test,
             ZERO_BYTES
         );
-        console.log("token0Balance:", address(this).balance);
-        console.log("token1Balance:", token.balanceOf(address(this)));
-        console.log("---------------------------------------");
 
-        console.log("sqrtLmt:", TickMath.MIN_SQRT_PRICE);
-        uint24 lpFeeAfterSwap1 = feeHook.getLpFee();
-        console.log("lpFeeAfterSwap1:", lpFeeAfterSwap1);
+        int256 newAmtSpcfd = 10 ether;
 
-        swapRouter.swap{value: uint256(amountSpcfd)}(
+        swapRouter.swap{value: uint256(newAmtSpcfd)}(
             key,
             IPoolManager.SwapParams({
                 zeroForOne: true,
-                amountSpecified: -amountSpcfd,
+                amountSpecified: -newAmtSpcfd,
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
             test,
             ZERO_BYTES
         );
-        uint24 lpFeeAfterSwap2 = feeHook.getLpFee();
-        console.log("lpFeeAfterSwap2:", lpFeeAfterSwap2);
-        console.log("token0Balance:", token.balanceOf(address(this)));
-        console.log("token1Balance:", token.balanceOf(address(this)));
 
-        console.log("---------------------------------------");
+        console.log("-------------------New-Block--------------------");
 
         uint256 currentBlock = block.number;
         vm.roll(currentBlock + 1);
-        uint24 lpFeeAfterSwap00 = feeHook.getLpFee();
-        console.log("lpFeeAfterSwap3:", lpFeeAfterSwap00);
+
         swapRouter.swap{value: uint256(amountSpcfd)}(
             key,
             IPoolManager.SwapParams({
@@ -175,9 +148,8 @@ contract NezlobinDFeeTest is Test, Deployers {
             test,
             ZERO_BYTES
         );
-        console.log("token0Balance:", address(this).balance);
-        console.log("token1Balance:", token.balanceOf(address(this)));
-        console.log("---------------------------------------");
+
+        console.log("------------------------------------------------");
         swapRouter.swap{value: uint256(amountSpcfd)}(
             key,
             IPoolManager.SwapParams({
@@ -188,9 +160,8 @@ contract NezlobinDFeeTest is Test, Deployers {
             test,
             ZERO_BYTES
         );
-        console.log("token0Balance:", address(this).balance);
-        console.log("token1Balance:", token.balanceOf(address(this)));
-        console.log("---------------------------------------");
+
+        console.log("------------------------------------------------");
         swapRouter.swap{value: uint256(amountSpcfd)}(
             key,
             IPoolManager.SwapParams({
@@ -201,14 +172,10 @@ contract NezlobinDFeeTest is Test, Deployers {
             test,
             ZERO_BYTES
         );
-        console.log("token0Balance:", address(this).balance);
-        console.log("token1Balance:", token.balanceOf(address(this)));
-        console.log("---------------------------------------");
+
+        console.log("-------------------New-Block--------------------");
         uint256 newBlock = block.number;
         vm.roll(newBlock + 1);
-        uint24 lpFeeAfterSwap3 = feeHook.getLpFee();
-
-        console.log("lpFeeAfterSwap3:", lpFeeAfterSwap3);
 
         swapRouter.swap{value: uint256(amountSpcfd)}(
             key,
@@ -220,14 +187,9 @@ contract NezlobinDFeeTest is Test, Deployers {
             test,
             ZERO_BYTES
         );
-        console.log("token0Balance:", address(this).balance);
-        console.log("token1Balance:", token.balanceOf(address(this)));
-        console.log("---------------------------------------");
-        uint24 lpFeeAfterSwap4 = feeHook.getLpFee();
-        console.log("lpFeeAfterSwap4:", lpFeeAfterSwap4);
-    }
 
-    function test_newBlockSwap() public {}
+        console.log("------------------------------------------------");
+    }
 
     function test_accessControlFailures() public {
         uint256 newAlpha = 3e16;

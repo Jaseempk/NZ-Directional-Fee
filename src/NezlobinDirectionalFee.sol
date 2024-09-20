@@ -36,9 +36,10 @@ contract NezlobinDirectionalFee is BaseHook {
 
     // State variables
     PoolId public poolId;
+    uint24 public initialLpFee = 3e3;
     uint256 public cDelta;
-    uint256 public ethPriceT;
-    uint256 public ethPriceT1;
+    int256 public ethPriceT;
+    int256 public ethPriceT1;
     int256 priceImpactPrecisionAdjusted;
 
     // Configurable parameters
@@ -48,7 +49,8 @@ contract NezlobinDirectionalFee is BaseHook {
 
     // Constants
     uint256 public constant ALPHA_PRECISION = 1e18;
-    uint256 public constant PRICE_IMPACT_PRECISION = 1e6;
+    uint256 public constant CDELTA_PRECISION = 1e24;
+    int256 public constant PRICE_IMPACT_PRECISION = 1e4;
 
     // Immutable variables
     address public immutable i_owner;
@@ -79,7 +81,7 @@ contract NezlobinDirectionalFee is BaseHook {
         return
             Hooks.Permissions({
                 beforeInitialize: true,
-                afterInitialize: false,
+                afterInitialize: true,
                 beforeAddLiquidity: false,
                 afterAddLiquidity: true,
                 beforeRemoveLiquidity: false,
@@ -104,9 +106,20 @@ contract NezlobinDirectionalFee is BaseHook {
         uint160,
         bytes calldata
     ) external override returns (bytes4) {
-        poolIdToBlock[key.toId()] = block.number;
         if (!key.fee.isDynamicFee()) revert NZD__MustBeDynamicFee();
+        poolIdToBlock[key.toId()] = block.number;
         return this.beforeInitialize.selector;
+    }
+
+    function afterInitialize(
+        address,
+        PoolKey calldata key,
+        uint160,
+        int24,
+        bytes calldata
+    ) external override returns (bytes4) {
+        poolManager.updateDynamicLPFee(key, initialLpFee);
+        return (this.afterInitialize.selector);
     }
 
     function afterAddLiquidity(
@@ -118,7 +131,7 @@ contract NezlobinDirectionalFee is BaseHook {
         bytes calldata
     ) external override returns (bytes4, BalanceDelta) {
         (uint256 currentSqrtPrice, , , ) = poolManager.getSlot0(key.toId());
-        ethPriceT = currentSqrtPrice;
+        ethPriceT = int(currentSqrtPrice);
 
         return (this.afterAddLiquidity.selector, delta);
     }
@@ -139,19 +152,15 @@ contract NezlobinDirectionalFee is BaseHook {
 
             // Update price and calculate price impact
             (uint256 sqrtPriceAtT1, , , ) = poolManager.getSlot0(key.toId());
-            ethPriceT1 = sqrtPriceAtT1;
+            ethPriceT1 = int256(sqrtPriceAtT1);
 
-            uint256 priceImpactPercent = (ethPriceT1 * PRICE_IMPACT_PRECISION) /
-                ethPriceT;
-            priceImpactPrecisionAdjusted = int256(
-                PRICE_IMPACT_PRECISION - priceImpactPercent
-            ); // Calculate 𝚫
+            int256 priceImpactPercent = ((ethPriceT1 - ethPriceT) *
+                PRICE_IMPACT_PRECISION) / ethPriceT;
 
             // Calculate cDelta
-            cDelta = calculateCDelta(
-                key,
-                uint256(-priceImpactPrecisionAdjusted)
-            );
+            cDelta = priceImpactPercent < 0
+                ? calculateCDelta(key, uint256(-priceImpactPercent))
+                : calculateCDelta(key, uint256(priceImpactPercent));
 
             ethPriceT = ethPriceT1;
         }
@@ -180,11 +189,11 @@ contract NezlobinDirectionalFee is BaseHook {
 
     function afterSwap(
         address,
-        PoolKey calldata,
+        PoolKey calldata key,
         IPoolManager.SwapParams calldata,
         BalanceDelta,
         bytes calldata
-    ) external pure override returns (bytes4, int128) {
+    ) external view override returns (bytes4, int128) {
         return (this.afterSwap.selector, 0);
     }
 
@@ -218,20 +227,28 @@ contract NezlobinDirectionalFee is BaseHook {
         uint128 liquidity = poolManager.getLiquidity(key.toId());
         (, , , uint24 currentLpFee) = poolManager.getSlot0(key.toId());
 
-        uint256 numerator = alpha * priceImpact;
+        uint256 numerator = alpha * priceImpact * CDELTA_PRECISION; // alpha=16 decimal precision priceImpact=6 decimal precision---- min=>22
 
-        uint256 denominator = liquidity * ALPHA_PRECISION;
+        uint256 denominator = liquidity * ALPHA_PRECISION; //liquidity=18 decimal precision ALPHA=18 decimal precision---- min=>36
 
         uint256 c = numerator / denominator;
 
         uint256 cdeltaInit = c * priceImpact;
 
-        while (currentLpFee < cdeltaInit) {
+        while ((currentLpFee < cdeltaInit) && c >= 2) {
             c--;
         }
 
         cdelta = c * priceImpact;
     }
+
+    //priceImpact: 449 =>3
+    // =>21
+    //alpha: 20000000000000000 =>18
+
+    //  liquidity: 16667474987387968222548 =>23
+    //  =>42
+    //alpha-precision: 1000000000000000000 =>19
 
     /// @notice Retrieves the current LP fee for the pool
     /// @return The current LP fee
