@@ -36,11 +36,12 @@ contract NezlobinDirectionalFee is BaseHook {
 
     // State variables
     PoolId public poolId;
-    uint24 public initialLpFee = 3e3;
+    uint24 public initialLpFee = 1e3;
     uint256 public cDelta;
     int256 public ethPriceT;
     int256 public ethPriceT1;
-    int256 priceImpactPrecisionAdjusted;
+    int256 priceImpactPercent;
+    // int256 priceImpactPrecisionAdjusted;
 
     // Configurable parameters
     uint256 public alpha = 2e16; // Represents 0.2
@@ -154,8 +155,9 @@ contract NezlobinDirectionalFee is BaseHook {
             (uint256 sqrtPriceAtT1, , , ) = poolManager.getSlot0(key.toId());
             ethPriceT1 = int256(sqrtPriceAtT1);
 
-            int256 priceImpactPercent = ((ethPriceT1 - ethPriceT) *
-                PRICE_IMPACT_PRECISION) / ethPriceT;
+            priceImpactPercent =
+                ((ethPriceT1 - ethPriceT) * PRICE_IMPACT_PRECISION) /
+                ethPriceT;
 
             // Calculate cDelta
             cDelta = priceImpactPercent < 0
@@ -166,14 +168,10 @@ contract NezlobinDirectionalFee is BaseHook {
         }
 
         // Adjust fees based on price impact
-        if (
-            priceImpactPrecisionAdjusted > 0 &&
-            priceImpactPrecisionAdjusted >= buyThreshold
-        ) {
+        if (priceImpactPercent > 0 && priceImpactPercent >= buyThreshold) {
             adjustFees(key, params, true);
         } else if (
-            priceImpactPrecisionAdjusted < 0 &&
-            priceImpactPrecisionAdjusted <= sellThreshold
+            priceImpactPercent < 0 && priceImpactPercent <= sellThreshold
         ) {
             adjustFees(key, params, false);
         } else {
@@ -194,6 +192,8 @@ contract NezlobinDirectionalFee is BaseHook {
         BalanceDelta,
         bytes calldata
     ) external view override returns (bytes4, int128) {
+        uint128 liquidity = poolManager.getLiquidity(key.toId());
+
         return (this.afterSwap.selector, 0);
     }
 
@@ -236,10 +236,17 @@ contract NezlobinDirectionalFee is BaseHook {
         uint256 cdeltaInit = c * priceImpact;
 
         while ((currentLpFee < cdeltaInit) && c >= 2) {
+            //very inefficient, working on gas efficient alternative
             c--;
         }
 
         cdelta = c * priceImpact;
+    }
+
+    function getTickLiquidity(
+        PoolKey calldata key
+    ) public view returns (uint128 liquidity) {
+        liquidity = poolManager.getLiquidity(key.toId());
     }
 
     //priceImpact: 449 =>3

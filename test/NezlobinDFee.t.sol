@@ -28,7 +28,7 @@ contract NezlobinDFeeTest is Test, Deployers {
     MockERC20 token;
     uint24 fee = 3000;
     int24 tickLower = -60;
-    int24 tickUpper = 60;
+    int24 tickUpper = 420;
     uint8 decimals = 6;
     address streamUpkeep = 0x5083b3A4739cE599809988C911aF618eCd08bfFA;
     uint256 token0ToSpend = 100 ether;
@@ -39,7 +39,6 @@ contract NezlobinDFeeTest is Test, Deployers {
         token0 = Currency.wrap(address(0));
 
         deployFreshManagerAndRouters();
-        // (token0, token1) = deployMintAndApprove2Currencies();
 
         token = new MockERC20("Test USDC", "USDC", decimals);
         token1 = Currency.wrap(address(token));
@@ -88,6 +87,8 @@ contract NezlobinDFeeTest is Test, Deployers {
             sqrtPriceAtUpperTick,
             token0ToSpend
         );
+        console.log("liquidity_delta:", liquidityDelta);
+        console.log("PM-Balance-b4:", address(manager).balance);
 
         vm.deal(address(this), 200 ether);
 
@@ -103,7 +104,7 @@ contract NezlobinDFeeTest is Test, Deployers {
         );
     }
 
-    function test_baseFeeFluctuations_basedOnGasPrice() public {
+    function test_baseFeeFluctuations_basedOnLiquidityChange() public {
         PoolSwapTest.TestSettings memory test = PoolSwapTest.TestSettings({
             takeClaims: false,
             settleUsingBurn: false
