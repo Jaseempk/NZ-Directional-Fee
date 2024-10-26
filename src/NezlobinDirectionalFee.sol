@@ -11,6 +11,7 @@ import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "lib/v4-periphery/lib/v4-c
 import {Currency, CurrencyLibrary} from "lib/v4-periphery/lib/v4-core/src/types/Currency.sol";
 import {StateLibrary} from "lib/v4-periphery/lib/v4-core/src/libraries/StateLibrary.sol";
 import {BalanceDelta} from "lib/v4-periphery/lib/v4-core/src/types/BalanceDelta.sol";
+import {AggregatorV3Interface} from "lib/chainlink-brownie-contracts/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 interface IStreamsUpkeep {
     function last_retrieved_price() external view returns (int192);
@@ -33,6 +34,7 @@ contract NezlobinDirectionalFee is BaseHook {
 
     // External contract interface
     IStreamsUpkeep streamsUpKeep;
+    AggregatorV3Interface v3Interface;
 
     // State variables
     PoolId public poolId;
@@ -44,7 +46,7 @@ contract NezlobinDirectionalFee is BaseHook {
     // int256 priceImpactPrecisionAdjusted;
 
     // Configurable parameters
-    uint256 public alpha = 2e16; // Represents 0.2
+    uint256 public alpha = 2e16; // Represents 0.02
     int256 public buyThreshold = 2e4;
     int256 public sellThreshold = -2e4;
 
@@ -67,8 +69,12 @@ contract NezlobinDirectionalFee is BaseHook {
 
     /// @notice Initializes the contract with the Uniswap V4 PoolManager
     /// @param _manager The address of the Uniswap V4 PoolManager
-    constructor(IPoolManager _manager) BaseHook(_manager) {
+    constructor(
+        IPoolManager _manager,
+        address priceFeedAddress
+    ) BaseHook(_manager) {
         i_owner = msg.sender;
+        v3Interface = AggregatorV3Interface(priceFeedAddress);
     }
 
     /// @notice Defines the permissions for this hook in the Uniswap V4 ecosystem
@@ -131,8 +137,9 @@ contract NezlobinDirectionalFee is BaseHook {
         BalanceDelta,
         bytes calldata
     ) external override returns (bytes4, BalanceDelta) {
-        (uint256 currentSqrtPrice, , , ) = poolManager.getSlot0(key.toId());
-        ethPriceT = int(currentSqrtPrice);
+        // (uint256 currentSqrtPrice, , , ) = poolManager.getSlot0(key.toId());
+        (, int256 ethPrice, , , ) = v3Interface.latestRoundData();
+        ethPriceT = int(ethPrice);
 
         return (this.afterAddLiquidity.selector, delta);
     }
@@ -152,8 +159,10 @@ contract NezlobinDirectionalFee is BaseHook {
             poolIdToBlock[key.toId()] = block.number;
 
             // Update price and calculate price impact
-            (uint256 sqrtPriceAtT1, , , ) = poolManager.getSlot0(key.toId());
-            ethPriceT1 = int256(sqrtPriceAtT1);
+            // (uint256 sqrtPriceAtT1, , , ) = poolManager.getSlot0(key.toId());
+            (, int256 ethPrice, , , ) = v3Interface.latestRoundData();
+
+            ethPriceT1 = int256(ethPrice);
 
             priceImpactPercent =
                 ((ethPriceT1 - ethPriceT) * PRICE_IMPACT_PRECISION) /
@@ -227,18 +236,18 @@ contract NezlobinDirectionalFee is BaseHook {
         uint128 liquidity = poolManager.getLiquidity(key.toId());
         (, , , uint24 currentLpFee) = poolManager.getSlot0(key.toId());
 
-        uint256 numerator = alpha * priceImpact * CDELTA_PRECISION; // alpha=16 decimal precision priceImpact=6 decimal precision---- min=>22
+        uint256 numerator = alpha * priceImpact * CDELTA_PRECISION;
+        uint256 denominator = liquidity * ALPHA_PRECISION;
 
-        uint256 denominator = liquidity * ALPHA_PRECISION; //liquidity=18 decimal precision ALPHA=18 decimal precision---- min=>36
-
+        // Calculate initial c
         uint256 c = numerator / denominator;
 
-        uint256 cdeltaInit = c * priceImpact;
+        // Calculate maximum allowable c based on currentLpFee constraint
+        // Subtract 1 to ensure currentLpFee - cdelta > 0
+        uint256 maxC = (currentLpFee - 1) / priceImpact;
 
-        while ((currentLpFee < cdeltaInit) && c >= 2) {
-            //very inefficient, working on gas efficient alternative
-            c--;
-        }
+        // Use the minimum of calculated c and maxC
+        c = c > maxC ? maxC : c;
 
         cdelta = c * priceImpact;
     }

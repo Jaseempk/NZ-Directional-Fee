@@ -28,7 +28,7 @@ contract NezlobinDFeeTest is Test, Deployers {
     MockERC20 token;
     uint24 fee = 3000;
     int24 tickLower = -60;
-    int24 tickUpper = 420;
+    int24 tickUpper = 180;
     uint8 decimals = 6;
     address streamUpkeep = 0x5083b3A4739cE599809988C911aF618eCd08bfFA;
     uint256 token0ToSpend = 100 ether;
@@ -87,8 +87,6 @@ contract NezlobinDFeeTest is Test, Deployers {
             sqrtPriceAtUpperTick,
             token0ToSpend
         );
-        console.log("liquidity_delta:", liquidityDelta);
-        console.log("PM-Balance-b4:", address(manager).balance);
 
         vm.deal(address(this), 200 ether);
 
