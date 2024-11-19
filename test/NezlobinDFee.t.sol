@@ -17,6 +17,7 @@ import {console} from "forge-std/console.sol";
 import {LiquidityAmounts} from "lib/v4-periphery/lib/v4-core/test/utils/LiquidityAmounts.sol";
 
 import {NezlobinDirectionalFee} from "../src/NezlobinDirectionalFee.sol";
+import {HookMiner} from "../utils/HookMiner.sol";
 
 contract NezlobinDFeeTest is Test, Deployers {
     using CurrencyLibrary for Currency;
@@ -31,6 +32,7 @@ contract NezlobinDFeeTest is Test, Deployers {
     int24 tickUpper = 180;
     uint8 decimals = 6;
     address streamUpkeep = 0x5083b3A4739cE599809988C911aF618eCd08bfFA;
+    address priceFeedAddy = 0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1;
     uint256 token0ToSpend = 100 ether;
     int256 amountSpcfd = 2.5 ether;
     address someAddress = makeAddr("someAddress");
@@ -52,11 +54,12 @@ contract NezlobinDFeeTest is Test, Deployers {
                 Hooks.BEFORE_SWAP_FLAG |
                 Hooks.AFTER_SWAP_FLAG
         );
+
         address nezlobinHookAddress = address(flags);
 
         deployCodeTo(
-            "NezlobinDirectionalFee.sol:NezlobinDirectionalFee",
-            abi.encode(manager),
+            "src/NezlobinDirectionalFee.sol:NezlobinDirectionalFee",
+            abi.encode(manager, priceFeedAddy),
             nezlobinHookAddress
         );
         feeHook = NezlobinDirectionalFee(nezlobinHookAddress);

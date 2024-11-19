@@ -137,9 +137,9 @@ contract NezlobinDirectionalFee is BaseHook {
         BalanceDelta,
         bytes calldata
     ) external override returns (bytes4, BalanceDelta) {
-        // (uint256 currentSqrtPrice, , , ) = poolManager.getSlot0(key.toId());
-        (, int256 ethPrice, , , ) = v3Interface.latestRoundData();
-        ethPriceT = int(ethPrice);
+        (uint256 currentSqrtPrice, , , ) = poolManager.getSlot0(key.toId());
+        // (, int256 ethPrice, , , ) = v3Interface.latestRoundData();
+        ethPriceT = int(currentSqrtPrice);
 
         return (this.afterAddLiquidity.selector, delta);
     }
@@ -159,10 +159,10 @@ contract NezlobinDirectionalFee is BaseHook {
             poolIdToBlock[key.toId()] = block.number;
 
             // Update price and calculate price impact
-            // (uint256 sqrtPriceAtT1, , , ) = poolManager.getSlot0(key.toId());
-            (, int256 ethPrice, , , ) = v3Interface.latestRoundData();
+            (uint256 sqrtPriceAtT1, , , ) = poolManager.getSlot0(key.toId());
+            // (, int256 ethPrice, , , ) = v3Interface.latestRoundData();
 
-            ethPriceT1 = int256(ethPrice);
+            ethPriceT1 = int256(sqrtPriceAtT1);
 
             priceImpactPercent =
                 ((ethPriceT1 - ethPriceT) * PRICE_IMPACT_PRECISION) /
@@ -257,14 +257,6 @@ contract NezlobinDirectionalFee is BaseHook {
     ) public view returns (uint128 liquidity) {
         liquidity = poolManager.getLiquidity(key.toId());
     }
-
-    //priceImpact: 449 =>3
-    // =>21
-    //alpha: 20000000000000000 =>18
-
-    //  liquidity: 16667474987387968222548 =>23
-    //  =>42
-    //alpha-precision: 1000000000000000000 =>19
 
     /// @notice Retrieves the current LP fee for the pool
     /// @return The current LP fee
