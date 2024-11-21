@@ -25,7 +25,7 @@ contract DeployNezlobinDirectionalFee is Script {
         );
 
         // Find an address + salt using HookMiner that meets our flags criteria
-        address CREATE2_DEPLOYER = 0x13b0D85CcB8bf860b6b79AF3029fCA081AE9beF2;
+        address CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
         (address hookAddress, bytes32 salt) = HookMiner.find(
             CREATE2_DEPLOYER,
             flags,

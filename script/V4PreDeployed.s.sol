@@ -50,7 +50,7 @@ contract V4PreDeployed is Script {
             currency1: token1,
             fee: 3000,
             tickSpacing: 120,
-            hooks: IHooks(0xECb8F35dD96116C9fE6b71A9e7E64CD49b38b4C0)
+            hooks: IHooks(0xef788Cf788e2125EB188C0e7a359A3Db9A0334C0)
         });
 
         // the second argument here is SQRT_PRICE_1_1
