@@ -35,12 +35,12 @@ anvil :; anvil -m 'test test test test test test test test test test test junk' 
 
 NETWORK_ARGS := --rpc-url $(ALCHEMY_RPC_URL) --private-key $(METAMASK_PRIVATE_KEY) --broadcast
 
-ifeq ($(findstring --network ethereum,$(ARGS)),--network ethereum)
+ifeq ($(findstring --network base sepolia,$(ARGS)),--network base sepolia)
 	NETWORK_ARGS := --rpc-url $(ALCHEMY_RPC_URL) --private-key $(METAMASK_PRIVATE_KEY) --broadcast --verify --etherscan-api-key $(ETHERSCAN_API_KEY) -vvvv
 endif
 
 deploy:
-	@forge script script/DeployNezlobinDirectionalFee.s.sol:DeployNezlobinDirectionalFee $(NETWORK_ARGS)
+	@forge script script/V4PreDeployed.s.sol:V4PreDeployed $(NETWORK_ARGS)
 
 verify:
-	@forge verify-contract --chain-id 84532 --watch --constructor-args `cast abi-encode "constructor(uint256,uint256,uint96,address)" "$(ALLY_THRESHOLD)" "$(GUARDIAN_THRESHOLD)" "$(FEEPERCENT_VALUE)" "$(MEMBERSHIP_ADDRESS)"` --etherscan-api-key $(ETHERSCAN_API_KEY) --compiler-version 0.8.24 0x87B9a8CeFC5ff1411C380266Cb13967C30931c02 src/QQuestP2PCircle.sol:QQuestP2PCircle
+	@forge verify-contract --chain-id 84532 --watch --constructor-args `cast abi-encode "constructor(address,address)" "$(POOL_MANAGER)" "$(PRICEFEED_ADDY)"` --etherscan-api-key $(ETHERSCAN_API_KEY) --compiler-version 0.8.26 0xECb8F35dD96116C9fE6b71A9e7E64CD49b38b4C0 src/NezlobinDirectionalFee.sol:NezlobinDirectionalFee

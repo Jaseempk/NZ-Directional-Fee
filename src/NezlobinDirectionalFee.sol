@@ -13,10 +13,6 @@ import {StateLibrary} from "lib/v4-periphery/lib/v4-core/src/libraries/StateLibr
 import {BalanceDelta} from "lib/v4-periphery/lib/v4-core/src/types/BalanceDelta.sol";
 import {AggregatorV3Interface} from "lib/chainlink-brownie-contracts/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
-interface IStreamsUpkeep {
-    function last_retrieved_price() external view returns (int192);
-}
-
 /// @title Nezlobin Directional Fee Hook
 /// @notice A Uniswap V4 hook that implements dynamic fee adjustment based on price impact
 /// @dev This contract adjusts LP fees based on recent price movements to optimize liquidity & IL for LPs
@@ -33,7 +29,6 @@ contract NezlobinDirectionalFee is BaseHook {
     using PoolIdLibrary for PoolKey;
 
     // External contract interface
-    IStreamsUpkeep streamsUpKeep;
     AggregatorV3Interface v3Interface;
 
     // State variables
@@ -138,7 +133,7 @@ contract NezlobinDirectionalFee is BaseHook {
         bytes calldata
     ) external override returns (bytes4, BalanceDelta) {
         (uint256 currentSqrtPrice, , , ) = poolManager.getSlot0(key.toId());
-        // (, int256 ethPrice, , , ) = v3Interface.latestRoundData();
+
         ethPriceT = int(currentSqrtPrice);
 
         return (this.afterAddLiquidity.selector, delta);
@@ -160,7 +155,6 @@ contract NezlobinDirectionalFee is BaseHook {
 
             // Update price and calculate price impact
             (uint256 sqrtPriceAtT1, , , ) = poolManager.getSlot0(key.toId());
-            // (, int256 ethPrice, , , ) = v3Interface.latestRoundData();
 
             ethPriceT1 = int256(sqrtPriceAtT1);
 
@@ -196,13 +190,11 @@ contract NezlobinDirectionalFee is BaseHook {
 
     function afterSwap(
         address,
-        PoolKey calldata key,
+        PoolKey calldata,
         IPoolManager.SwapParams calldata,
         BalanceDelta,
         bytes calldata
-    ) external view override returns (bytes4, int128) {
-        uint128 liquidity = poolManager.getLiquidity(key.toId());
-
+    ) external pure override returns (bytes4, int128) {
         return (this.afterSwap.selector, 0);
     }
 

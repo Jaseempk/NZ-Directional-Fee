@@ -11,8 +11,8 @@ import "forge-std/console.sol";
 contract DeployNezlobinDirectionalFee is Script {
     // Address of PoolManager deployed on Sepolia
     PoolManager manager =
-        PoolManager(0xCa6DBBe730e31fDaACaA096821199EEED5AD84aE);
-    address priceFeedAddress = 0x694AA1769357215DE4FAC081bf1f309aDC325306;
+        PoolManager(0x7Da1D65F8B249183667cdE74C5CBD46dD38AA829);
+    address priceFeedAddress = 0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1;
 
     function setUp() public {
         // Set up the hook flags you wish to enable
@@ -25,12 +25,12 @@ contract DeployNezlobinDirectionalFee is Script {
         );
 
         // Find an address + salt using HookMiner that meets our flags criteria
-        address CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
+        address CREATE2_DEPLOYER = 0x13b0D85CcB8bf860b6b79AF3029fCA081AE9beF2;
         (address hookAddress, bytes32 salt) = HookMiner.find(
             CREATE2_DEPLOYER,
             flags,
             type(NezlobinDirectionalFee).creationCode,
-            abi.encode(address(manager))
+            abi.encode(address(manager), priceFeedAddress)
         );
 
         // Deploy our hook contract with the given `salt` value
