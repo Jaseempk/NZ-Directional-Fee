@@ -40,7 +40,7 @@ ifeq ($(findstring --network base sepolia,$(ARGS)),--network base sepolia)
 endif
 
 deploy:
-	@forge script script/V4PreDeployed.s.sol:V4PreDeployed $(NETWORK_ARGS)
+	@forge script script/DeployNezlobinDirectionalFee.s.sol:DeployNezlobinDirectionalFee $(NETWORK_ARGS)
 
 verify:
 	@forge verify-contract --chain-id 84532 --watch --constructor-args `cast abi-encode "constructor(address,address)" "$(POOL_MANAGER)" "$(PRICEFEED_ADDY)"` --etherscan-api-key $(ETHERSCAN_API_KEY) --compiler-version 0.8.26 0xECb8F35dD96116C9fE6b71A9e7E64CD49b38b4C0 src/NezlobinDirectionalFee.sol:NezlobinDirectionalFee

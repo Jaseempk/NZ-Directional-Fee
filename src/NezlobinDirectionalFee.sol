@@ -38,7 +38,6 @@ contract NezlobinDirectionalFee is BaseHook {
     int256 public ethPriceT;
     int256 public ethPriceT1;
     int256 priceImpactPercent;
-    // int256 priceImpactPrecisionAdjusted;
 
     // Configurable parameters
     uint256 public alpha = 2e16; // Represents 0.02

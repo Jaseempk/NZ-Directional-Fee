@@ -35,21 +35,13 @@ contract V4PreDeployed is Script {
 
         if (address(token0Address) > address(token1Address)) {
             (token0, token1) = (
-                Currency.wrap(
-                    address(0x036CbD53842c5426634e7929541eC2318f3dCF7e)
-                ),
-                Currency.wrap(
-                    address(0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE)
-                )
+                Currency.wrap(token1Address),
+                Currency.wrap(token0Address)
             );
         } else {
             (token0, token1) = (
-                Currency.wrap(
-                    address(0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE)
-                ),
-                Currency.wrap(
-                    address(0x036CbD53842c5426634e7929541eC2318f3dCF7e)
-                )
+                Currency.wrap(token0Address),
+                Currency.wrap(token1Address)
             );
         }
 
@@ -62,11 +54,7 @@ contract V4PreDeployed is Script {
         });
 
         // the second argument here is SQRT_PRICE_1_1
-        manager.initialize(
-            key,
-            79228162514264337593543950336,
-            Constants.ZERO_BYTES
-        );
+        manager.initialize(key, 79228162514264337593543950336, new bytes(0));
     }
 
     function run() public {}
